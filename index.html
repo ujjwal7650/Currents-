@@ -407,7 +407,6 @@
     <div class="chart-panel">
       <div class="chart-controls">
         <div style="display:flex; align-items:center; gap:12px;">
-          <select id="chartAsset"></select>
           <span id="chartChangeBadge" class="change-badge"></span>
         </div>
         <div class="range-toggle" id="rangeToggle">
@@ -956,19 +955,6 @@ function runConversion(){
 let currentAsset = 'EUR-USD';
 let currentDays = 7;
 
-function populateChartAssetSelect(){
-  const sel = document.getElementById('chartAsset');
-  const fxPairs = ['EUR-USD','GBP-USD','USD-JPY','USD-INR','AUD-USD','USD-CAD'];
-  const cryptoUsd = CRYPTO.filter(c=>c.sym!=='USDT').map(c=>c.sym+'-USD');
-  const extras = ['USDT-INR','INR-USDT'];
-  const codes = [...fxPairs, ...cryptoUsd, ...extras];
-  sel.innerHTML = codes.map(code => {
-    const [from,to] = code.split('-');
-    return `<option value="${code}">${from} / ${to}</option>`;
-  }).join('');
-  sel.value = currentAsset;
-}
-
 async function loadCryptoVsFiat(cryptoId, fiatCode, days){
   const data = await fetchJSON(`https://api.coingecko.com/api/v3/coins/${cryptoId}/market_chart?vs_currency=${fiatCode.toLowerCase()}&days=${days}`);
   return data.prices.map(p => ({t:new Date(p[0]).toISOString().slice(0,10), v:p[1]}));
@@ -1157,17 +1143,27 @@ function isPairSupported(from, to){
 function syncConverterChart(){
   const from = document.getElementById('convFrom').value;
   const to = document.getElementById('convTo').value;
-  if(from === to || !isPairSupported(from, to)) return;
-  const code = from + '-' + to;
-  currentAsset = code;
-  const sel = document.getElementById('chartAsset');
-  let opt = Array.from(sel.options).find(o => o.value === code);
-  if(!opt){
-    opt = document.createElement('option');
-    opt.value = code; opt.textContent = `${from} / ${to}`;
-    sel.appendChild(opt);
+
+  if(from === to){
+    document.getElementById('chartDesc').textContent = `${from} / ${to}`;
+    document.getElementById('chartChangeBadge').textContent = '';
+    document.getElementById('chartStage').innerHTML = statusBlock({icon:'—', message:'Pick two different currencies to see a trend.'});
+    document.getElementById('chartLow').textContent = 'low —';
+    document.getElementById('chartHigh').textContent = 'high —';
+    return;
   }
-  sel.value = code;
+
+  if(!isPairSupported(from, to)){
+    currentAsset = from + '-' + to;
+    document.getElementById('chartDesc').textContent = `${from} / ${to}`;
+    document.getElementById('chartChangeBadge').textContent = '';
+    document.getElementById('chartStage').innerHTML = statusBlock({icon:'⚠', message:'Historical trend isn\'t available for this pair.'});
+    document.getElementById('chartLow').textContent = 'low —';
+    document.getElementById('chartHigh').textContent = 'high —';
+    return;
+  }
+
+  currentAsset = from + '-' + to;
   refreshChart();
 }
 
@@ -1201,7 +1197,6 @@ async function refreshAll(){
 
 async function init(){
   populateConverterSelects();
-  populateChartAssetSelect();
   populateAssetSelect('holdingAsset');
   renderPortfolio();
   renderWatchlist();
@@ -1215,7 +1210,6 @@ async function init(){
     runConversion();
     syncConverterChart();
   });
-  document.getElementById('chartAsset').addEventListener('change', e => { currentAsset = e.target.value; refreshChart(); });
   document.getElementById('predictBtn').addEventListener('click', togglePredict);
   document.getElementById('holdingAddBtn').addEventListener('click', addHolding);
   document.querySelectorAll('#rangeToggle button').forEach(btn => {
@@ -1231,7 +1225,7 @@ async function init(){
   await loadTrending();
   await new Promise(r => setTimeout(r, 1500));
   await loadGainersLosers();
-  await refreshChart();
+  syncConverterChart();
 
   setInterval(refreshAll, 60000); // refresh live data every 60s
   setInterval(loadGainersLosers, 60000);
